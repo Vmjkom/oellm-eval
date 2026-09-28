@@ -43,7 +43,6 @@ lumi:
   ACCOUNT: "project_465002530"
   QUEUE_LIMIT: 210
   EVAL_CONTAINER_IMAGE: "eval_env-lumi.sif"
-  SINGULARITY_ARGS: "--rocm"
 
 snellius:
   hostname_pattern: "*.snellius.surf.nl"
