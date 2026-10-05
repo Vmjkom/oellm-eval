@@ -76,6 +76,10 @@ do
         continue
     fi
 
+    # Keep task names readable and safe for filenames, with room for a unique suffix.
+    TASK_NAME=$(printf '%s' "$task_path" | LC_ALL=C tr -cs 'A-Za-z0-9._-' '_' | cut -c 1-200)
+    RESULT_NAME="${{TASK_NAME:-task}}_$(openssl rand -hex 5)"
+
     echo "----------------------------------------------------"
     echo "Starting evaluation for:"
     echo "  Model: $model_path"
@@ -144,7 +148,7 @@ do
                 --model_args pretrained="$model_path",trust_remote_code=True \
                 --tasks "$task_path" \
                 --num_fewshot "$n_shot" \
-                --output_path "{evals_dir}/$(openssl rand -hex 5).json" \
+                --output_path "{evals_dir}/$$RESULT_NAME.json" \
                 --trust_remote_code \
                 ${{LM_EVAL_INCLUDE_PATH:+--include_path $$LM_EVAL_INCLUDE_PATH}} \
                 --batch_size auto \
@@ -169,7 +173,7 @@ do
                 fi
             fi
 
-            RESULTS_SUBDIR="{evals_dir}/$(openssl rand -hex 5)"
+            RESULTS_SUBDIR="{evals_dir}/$$RESULT_NAME"
             mkdir -p "$RESULTS_SUBDIR"
 
             if [ -n "$VENV_PATH" ]; then
@@ -197,7 +201,7 @@ do
             ;;
         evalchemy)
             EVALCHEMY_WORK_DIR="{evalchemy_dir}"
-            RESULTS_SUBDIR="{evals_dir}/$(openssl rand -hex 5)"
+            RESULTS_SUBDIR="{evals_dir}/$$RESULT_NAME"
             if [ -n "$VENV_PATH" ]; then
                 source "$VENV_PATH/bin/activate"
                 cd "$EVALCHEMY_WORK_DIR"
