@@ -10,6 +10,7 @@
 #SBATCH --array=0-{array_limit}%{max_array_len}
 #SBATCH --nodes=$NODES
 #SBATCH --nodelist=$NODELIST
+#SBATCH --ntasks=1
 
 
 CSV_PATH="{csv_path}"
@@ -17,7 +18,18 @@ NUM_JOBS={num_jobs}
 TOTAL_EVALS={total_evals}
 LIMIT="{limit}"
 VENV_PATH="{venv_path}"
+MODEL_BACKEND="{model_backend}"
+BACKEND_MODEL_ARGS={backend_model_args}
+EVAL_BATCH_SIZE="{batch_size}"
 LM_EVAL_INCLUDE_PATH="{lm_eval_include_path}"
+
+# vLLM owns tensor parallelism; do not inherit an outer distributed launcher.
+if [ "$MODEL_BACKEND" = vllm ]; then
+    if [ "${{WORLD_SIZE:-1}}" != 1 ] || [ "${{LMEVAL_DP:-1}}" != 1 ]; then
+        echo "[error] Launch vLLM once per evaluation, without WORLD_SIZE/LMEVAL_DP > 1."
+        exit 1
+    fi
+fi
 
 # avoiding crashes due to compute nodes not having access to the internet
 export HF_HOME=$HF_HOME
@@ -62,7 +74,7 @@ fi
 
 # Use `tail` and `head` to slice the CSV file for the tasks assigned to this job.
 # The +1 on START_INDEX accounts for the header row.
-tail -n +$((START_INDEX + 1)) "$CSV_PATH" | head -n $((END_INDEX - START_INDEX + 1)) | \
+EVAL_STATUS=0
 while IFS=, read -r model_path task_path n_shot eval_suite
 do
     # Remove trailing carriage returns if script is edited on Windows
@@ -129,12 +141,22 @@ do
             source "$VENV_PATH/bin/activate"
             python "$@"
         else
+            # Keep Slurm's CUDA/HIP/ROCR masks for vLLM, including under --contain.
+            GPU_ENV_ARGS=(env "CUDA_VISIBLE_DEVICES=$GPU_DEVICES")
+            if [ "$MODEL_BACKEND" = vllm ]; then
+                GPU_ENV_ARGS=(env)
+                for gpu_var in CUDA_VISIBLE_DEVICES HIP_VISIBLE_DEVICES ROCR_VISIBLE_DEVICES; do
+                    if [[ -v "$gpu_var" ]]; then
+                        GPU_ENV_ARGS+=("$gpu_var=${{!gpu_var}}")
+                    fi
+                done
+            fi
             singularity exec $SINGULARITY_ARGS \
                 $SINGULARITY_ENV_ARGS \
                 $SINGULARITY_HOME_ARG \
                 --bind $BIND_PATHS \
-                $EVAL_SIF_PATH \
-                env CUDA_VISIBLE_DEVICES=$GPU_DEVICES \
+                "$EVAL_SIF_PATH" \
+                "${{GPU_ENV_ARGS[@]}}" \
                 python "$@"
         fi
     }}
@@ -144,15 +166,15 @@ do
             echo
             echo "----------------------------------------------------"
             echo "lm_eval Execution"
-            run_python -m lm_eval --model hf \
-                --model_args pretrained="$model_path",trust_remote_code=True \
+            run_python -m lm_eval --model "$MODEL_BACKEND" \
+                --model_args "pretrained=$model_path,trust_remote_code=True${{BACKEND_MODEL_ARGS:+,$$BACKEND_MODEL_ARGS}}" \
                 --tasks "$task_path" \
                 --num_fewshot "$n_shot" \
                 --output_path "{evals_dir}/$$RESULT_NAME.json" \
                 --trust_remote_code \
                 ${{LM_EVAL_INCLUDE_PATH:+--include_path $$LM_EVAL_INCLUDE_PATH}} \
-                --batch_size auto \
-                ${{LIMIT:+--limit $LIMIT}}
+                --batch_size "$EVAL_BATCH_SIZE" \
+                ${{LIMIT:+--limit $LIMIT}} || EVAL_STATUS=1
             echo "----------------------------------------------------"
             ;;
         lighteval|light-eval)
@@ -226,6 +248,7 @@ do
     echo "----------------------------------------------------"
     echo "Evaluation finished for model: $model_path"
 
-done
+done < <(tail -n +$((START_INDEX + 1)) "$CSV_PATH" | head -n $((END_INDEX - START_INDEX + 1)))
 
 echo "Job $SLURM_ARRAY_TASK_ID finished."
+exit "$EVAL_STATUS"

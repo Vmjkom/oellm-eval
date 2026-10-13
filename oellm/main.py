@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import re
+import shlex
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -118,6 +119,10 @@ def schedule_evals(
     skip_checks: bool = False,
     trust_remote_code: bool = True,
     venv_path: str | None = None,
+    model_backend: str = "hf",
+    model_args: str = "",
+    tensor_parallel_size: int = 1,
+    batch_size: str = "auto",
     lm_eval_include_path: str | None = None,
     local: bool = False,
     slurm_template_var: str | None = None,
@@ -158,6 +163,12 @@ def schedule_evals(
         trust_remote_code: If True, trust remote code when downloading datasets. Default is True. Workflow might fail if set to False.
         venv_path: Path to a Python virtual environment. If provided, evaluations run directly using
             this venv instead of inside a Singularity/Apptainer container.
+        model_backend: lm-eval-harness backend: hf (default) or vllm.
+        model_args: Additional comma-separated lm-eval model arguments, e.g.
+            dtype=bfloat16,gpu_memory_utilization=0.9. Requires lm-eval tasks only.
+        tensor_parallel_size: GPUs used by one vLLM engine on one node. Defaults to 1.
+        batch_size: lm-eval request batch size: auto or a positive integer.
+            A finite size bounds the scoring outputs retained per vLLM call.
         lm_eval_include_path: Path to a directory containing custom lm_eval task YAML definitions.
             Passed as --include_path to lm_eval. Defaults to the bundled custom_lm_eval_tasks
             directory shipped with the package, which overrides broken upstream tasks
@@ -173,6 +184,22 @@ def schedule_evals(
             node constraint is added.
     """
     _setup_logging(verbose)
+
+    if model_backend not in {"hf", "vllm"}:
+        raise ValueError("model_backend must be hf or vllm")
+    if tensor_parallel_size < 1:
+        raise ValueError("tensor_parallel_size must be positive")
+    if model_backend != "vllm" and tensor_parallel_size != 1:
+        raise ValueError("tensor_parallel_size requires model_backend=vllm")
+    batch_size = str(batch_size)
+    if batch_size != "auto" and (not batch_size.isdecimal() or int(batch_size) < 1):
+        raise ValueError("batch_size must be auto or a positive integer")
+    reserved = {"pretrained", "tensor_parallel_size", "data_parallel_size", "batch_size"}
+    if any(arg.split("=", 1)[0].strip() in reserved for arg in model_args.split(",")):
+        raise ValueError(
+            "Use --models, --tensor_parallel_size and --batch_size instead of "
+            "model_args for those settings; data_parallel_size is not supported"
+        )
 
     if local:
         if not venv_path:
@@ -312,6 +339,13 @@ def schedule_evals(
         return None
 
     df["eval_suite"] = df["eval_suite"].str.lower()
+    if model_backend != "hf" or model_args or batch_size != "auto":
+        unsupported = set(df["eval_suite"]) - {"lm_eval", "lm-eval", "lm-eval-harness"}
+        if unsupported:
+            raise ValueError(
+                "Backend/model_args/batch_size options require lm-eval-harness tasks only; "
+                f"unsupported suites: {', '.join(sorted(unsupported))}"
+            )
 
     # Ensure that all datasets required by the tasks are cached locally to avoid
     # network access on compute nodes.
@@ -418,6 +452,16 @@ def schedule_evals(
         os.environ["NODELIST"] = nodelist
         logging.info(f"Constraining job to nodelist: {nodelist}")
 
+    # NOTE: Why does VLLM only support single node?
+    if model_backend == "vllm":
+        if int(os.environ.get("NODES", "1")) != 1:
+            raise ValueError("The vLLM backend supports one node per evaluation")
+        os.environ["NODES"] = "1"
+        os.environ["GPUS_PER_NODE"] = str(tensor_parallel_size)
+        model_args = ",".join(
+            filter(None, [model_args, f"tensor_parallel_size={tensor_parallel_size}"])
+        )
+
     # Log the calculated values
     slurm_mem = _resolve_slurm_mem()
     logging.info("📊 Evaluation planning:")
@@ -449,6 +493,9 @@ def schedule_evals(
         slurm_mem=slurm_mem,
         limit=limit if limit else "",  # Sample limit for quick testing
         venv_path=venv_path or "",
+        model_backend=model_backend,
+        backend_model_args=shlex.quote(model_args).replace("$", "$$"),
+        batch_size=batch_size,
         lm_eval_include_path=str(
             Path(
                 lm_eval_include_path
@@ -513,6 +560,7 @@ def schedule_evals(
             logging.info("Local evaluation completed.")
         except subprocess.CalledProcessError as e:
             logging.error(f"Evaluation failed with exit code {e.returncode}")
+            raise
         return
 
     try:

@@ -315,7 +315,7 @@ task_groups:
     metric: acc
     tasks:
       - task: agieval_lsat_ar
-        n_shots: [3]
+        n_shots: [0]
         dataset: hails/agieval-lsat-ar
       - task: arc_easy
         metric: acc_norm
@@ -396,7 +396,7 @@ task_groups:
         dataset: EleutherAI/coqa
       - task: squadv2
         metric: f1
-        n_shots: [10]
+        n_shots: [0]
         dataset: rajpurkar/squad_v2
       - task: jeopardy
         metric: exact_match
