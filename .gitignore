@@ -16,3 +16,4 @@
 **/task_map_cache.json
 *.sif
 results/
+temp.sh
