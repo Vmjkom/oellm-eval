@@ -29,11 +29,12 @@ srun singularity exec \
     "$CONTAINER" \
     /opt/venv/bin/oellm-eval schedule \
         --models "$model" \
-        --task_groups "dclm-core-22" \
+        --tasks arc_easy,hellaswag,jeopardy \
+        --n_shot 10 \
+        --limit 5000 \
         --model_backend vllm \
-        --tensor_parallel_size "$SLURM_GPUS_PER_NODE" \
         --batch_size auto \
-        --model_args dtype=bfloat16,gpu_memory_utilization=0.9 \
+        --model_args dtype=bfloat16,max_length=4096,gpu_memory_utilization=0.9 \
         --local true \
         --venv_path /opt/venv \
         --skip_checks true
