@@ -17,6 +17,7 @@ from oellm.task_groups import (
     _expand_task_groups,
     _load_task_groups_data,
     _resolve_task_languages,
+    _select_tasks,
     get_all_language_codes,
     split_group_tokens,
 )
@@ -30,6 +31,7 @@ EXPLICIT_MULTILINGUAL_GROUPS = [
     "pawsx-eu",
     "xnli-eu",
     "mmmlu-eu",
+    "gpqa-diamond",
 ]
 
 
@@ -57,6 +59,19 @@ def test_bracket_allows_per_group_languages():
         "sib200_fra_Latn",
         "flores200:deu_Latn-eng_Latn",
     }
+
+
+def test_lighteval_colon_suffix_resolves_language():
+    """Custom lighteval tasks carry an HF config name as subset (``gpqa_diamond``,
+    ``default``) and encode their language as a ``:lang`` name suffix."""
+    assert _resolve_task_languages("gpqa_diamond:en", "gpqa_diamond") == ["eng_Latn"]
+    assert _resolve_task_languages("gpqa_diamond:fi", "default") == ["fin_Latn"]
+
+
+def test_bracket_scopes_custom_lighteval_group():
+    jobs = _expand_task_groups(["gpqa-diamond[fin_Latn]"])
+    assert {j.task for j in jobs} == {"gpqa_diamond:fi"}
+    assert {j.suite for j in jobs} == {"lighteval"}
 
 
 def test_bracket_accepts_comma_or_pipe_separator():
@@ -208,3 +223,63 @@ def test_templated_tasks_all_resolve_to_a_language():
                 f"{name}: task {task['task']} (subset={task.get('subset')}) "
                 "did not resolve to a language"
             )
+
+
+def test_judgearena_selects_base_tasks():
+    tasks = [task.name for _, task in _select_tasks(["judgearena"])]
+
+    assert tasks == [
+        "alpaca-eval",
+        "arena-hard-v0.1",
+        "arena-hard-v2.0",
+        "elo-comparia",
+        "elo-lmarena",
+        "elo-lmarena-100k",
+        "elo-lmarena-140k",
+        "fluency",
+        "m-arena-hard-v0.1",
+        "m-arena-hard-v2.0",
+        "mt-bench",
+    ]
+
+
+# --- multilingual-oellm-eu --------------------------------------------------------
+# A super_group over the whole multilingual suite. It needs no language bracket
+# because the member groups themselves no longer carry non-target languages.
+
+# Dropped from global-mmlu-eu (ru, he) and include (hy, az, be, ru).
+OFF_TARGET_CODES = ["rus_Cyrl", "heb_Hebr", "hye_Armn", "aze_Latn", "bel_Cyrl"]
+
+
+def test_multilingual_oellm_eu_reaches_no_off_target_language():
+    reached = {
+        lang for _s, t in _select_tasks(["multilingual-oellm-eu"]) for lang in t.languages
+    }
+    assert reached
+    assert not reached & set(OFF_TARGET_CODES)
+
+
+def test_multilingual_oellm_eu_spans_both_eval_suites():
+    suites = {j.suite for j in _expand_task_groups(["multilingual-oellm-eu"])}
+    assert suites == {"lm-eval-harness", "lighteval"}
+
+
+def test_multilingual_oellm_eu_every_listed_group_contributes():
+    """A listed group that resolves to nothing is a typo, not a no-op."""
+    listed = [
+        g["task"]
+        for g in _raw_yaml()["super_groups"]["multilingual-oellm-eu"]["task_groups"]
+    ]
+    assert len(listed) == len(set(listed))
+    for group_name in listed:
+        assert _expand_task_groups([group_name]), group_name
+
+
+def test_multilingual_oellm_eu_spans_more_than_the_curated_multilingual_group():
+    """It is the whole suite: everything oellm-multilingual reaches, plus the
+    benchmarks that group never covered (SIB-200, PolyMath, global PIQA, ...)."""
+    targets = {j.task for j in _expand_task_groups(["multilingual-oellm-eu"])}
+    curated = {j.task for j in _expand_task_groups(["oellm-multilingual"])}
+    assert curated - {"xwinograd", "xcopa", "xstorycloze"} < targets
+    for extra in ["sib200_deu_Latn", "polymath_de_top", "xcsqa_deu_Latn"]:
+        assert extra in targets
