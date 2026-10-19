@@ -23,7 +23,6 @@ export TORCHINDUCTOR_CACHE_DIR=/tmp/$USER/.cache/torchinductor
 export SINGULARITY_BIND=/scratch/project_465002530,/flash/project_465002530,/flash/project_462001516,/scratch/project_462001516
 export SINGULARITYENV_SLURM_MEM=60G
 export EVAL_OUTPUT_DIR=/flash/project_462001516/users/villekom/eval-output
-# Let Slurm select visible GPUs; one vLLM engine uses them for tensor parallelism.
 
 srun singularity exec \
     --bind "$REPO:/opt/oellm-eval:ro" \
@@ -32,7 +31,6 @@ srun singularity exec \
         --models "$model" \
         --tasks arc_easy,hellaswag,jeopardy \
         --n_shot 10 \
-        --limit 5000 \
         --model_backend hf \
         --batch_size auto \
         --model_args dtype=bfloat16,max_length=4096 \
@@ -41,14 +39,4 @@ srun singularity exec \
         --skip_checks true
 
 sacct -X -j $SLURM_JOBID --format=JobName%30,CPUTimeRAW%10,Elapsed%10,AveCPU%10,AveCPUFreq%10,AveDiskRead%10,ReqTRES%50
-sacct --long -j $SLURM_JOBID -p > $EVAL_OUTPUT_DIR/sacct_output.csv
-
-#if [ $SBATCH_PARTITION == "dev-g"]; then
-#    USED-GPU-HOURS=
-# LUMI compute billing if --cpus-per-task > 8. Look for more info here: https://docs.lumi-supercomputer.eu/runjobs/lumi_env/billing/#partitions-allocatable-by-resources
-#GPU-hours-billed = (
-#    max(
-#        ceil(CPU-cores-allocated / 8),
-#        ceil(memory-allocated / 64GB),
-#        GCDs-allocated )
-#    * runtime-of-job) * 0.5
+sacct --long -j "$SLURM_JOB_ID" -p > "$EVAL_OUTPUT_DIR/sacct-${SLURM_JOB_ID}-hf.csv"

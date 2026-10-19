@@ -1,7 +1,11 @@
-{
-    "EVAL_CONTAINER_IMAGE": "/flash/project_462001516/users/villekom/singularity/sandboxes/oellm_eval_lumi_test.sif",
+{   "EVAL_BASE_DIR":"/flash/project_462001516/containers/staging",
+    "EVAL_CONTAINER_IMAGE": "/flash/project_462001516/containers/staging/oellm_eval_lumi_06_10_2026.sif",
     "EVAL_OUTPUT_DIR": "/flash/project_46200156/users/villekom/eval_output/",
+    "HF_HOME": "/scratch/project_465002530/cache/huggingface",
     "PARTITION": "dev-g",
     "ACCOUNT": "project_462001516",
-    "SLURM_MEM": "480G"
+    "SLURM_MEM": "60G",
+    "NODES":1,
+    "GPUS_PER_NODE":1,
+    "TIME":"00:30:00"
 }
