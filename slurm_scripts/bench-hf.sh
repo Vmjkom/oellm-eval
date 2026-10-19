@@ -7,7 +7,7 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-gpu=7    # More than 8 increases billing
 #SBATCH --mem=60G
-#SBATCH --time=00:30:00
+#SBATCH --time=00:45:00
 #SBATCH -o /flash/project_462001516/users/villekom/eval-output/slurm_logs/%x-%j.log
 
 set -xeu
@@ -39,4 +39,3 @@ srun singularity exec \
         --skip_checks true
 
 sacct -X -j $SLURM_JOBID --format=JobName%30,CPUTimeRAW%10,Elapsed%10,AveCPU%10,AveCPUFreq%10,AveDiskRead%10,ReqTRES%50
-sacct --long -j "$SLURM_JOB_ID" -p > "$EVAL_OUTPUT_DIR/sacct-${SLURM_JOB_ID}-hf.csv"

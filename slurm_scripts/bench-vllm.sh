@@ -23,7 +23,6 @@ export TORCHINDUCTOR_CACHE_DIR=/tmp/$USER/.cache/torchinductor
 export SINGULARITY_BIND=/scratch/project_465002530,/flash/project_465002530,/flash/project_462001516,/scratch/project_462001516
 export SINGULARITYENV_SLURM_MEM=60G
 export EVAL_OUTPUT_DIR=/flash/project_462001516/users/villekom/eval-output
-# Let Slurm select visible GPUs; one vLLM engine uses them for tensor parallelism.
 
 srun singularity exec \
     --bind "$REPO:/opt/oellm-eval:ro" \
@@ -40,4 +39,3 @@ srun singularity exec \
         --skip_checks true
 
 sacct -X -j $SLURM_JOBID --format=JobName%30,CPUTimeRAW%10,Elapsed%10,AveCPU%10,AveCPUFreq%10,AveDiskRead%10,ReqTRES%50
-sacct --long -j "$SLURM_JOB_ID" -p > "$EVAL_OUTPUT_DIR/sacct-${SLURM_JOB_ID}-vllm.csv"
