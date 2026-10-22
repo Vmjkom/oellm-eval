@@ -502,6 +502,29 @@ def schedule_evals(
         f"evals to schedule: {len(df)}."
     )
 
+    # Apply slurm_template_var overrides (JSON object) 
+    if slurm_template_var:
+        try:
+            opts = json.loads(slurm_template_var)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"slurm_template_var must be a valid JSON object: {e}"
+            ) from e
+        if not isinstance(opts, dict):
+            raise ValueError(
+                "slurm_template_var must be a JSON object, e.g. "
+                '{"PARTITION":"dev-g","ACCOUNT":"FOO","TIME":"02:00:00"}'
+            )
+        for key, value in opts.items():
+            if "TIME" not in opts.items():
+                    time_limit = 
+            if key.upper() == "TIME":
+                time_limit = str(value)
+                logging.info(f"Using time limit override: {time_limit}")
+            else:
+                os.environ[key] = str(value)
+                logging.info(f"Using slurm_template_var override: {key}={value}")
+
     evals_dir = (
         Path(os.environ["EVAL_OUTPUT_DIR"])
         / f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
@@ -559,28 +582,7 @@ def schedule_evals(
     hours_with_margin = max(hours_with_margin, 3)
     hours_with_margin = min(hours_with_margin, 23)
     computed_time = f"{hours_with_margin:02d}:59:00"
-    time_limit = computed_time
-
-    # Apply slurm_template_var overrides (JSON object)
-    if slurm_template_var:
-        try:
-            opts = json.loads(slurm_template_var)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"slurm_template_var must be a valid JSON object: {e}"
-            ) from e
-        if not isinstance(opts, dict):
-            raise ValueError(
-                "slurm_template_var must be a JSON object, e.g. "
-                '{"PARTITION":"dev-g","ACCOUNT":"FOO","TIME":"02:00:00"}'
-            )
-        for key, value in opts.items():
-            if key.upper() == "TIME":
-                time_limit = str(value)
-                logging.info(f"Using time limit override: {time_limit}")
-            else:
-                os.environ[key] = str(value)
-                logging.info(f"Using slurm_template_var override: {key}={value}")
+    #time_limit = computed_time #NOTE: This gets inflated quickly - Revise the logic for calculating this
 
     if nodelist:
         os.environ["NODELIST"] = nodelist
