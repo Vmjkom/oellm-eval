@@ -527,7 +527,7 @@ def schedule_evals(
 
     evals_dir = (
         Path(os.environ["EVAL_OUTPUT_DIR"])
-        / f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}"
+        / f"{datetime.now().strftime('%Y-%m-%d')}" #NOTE: This is way too verbose, every singular launch creates a new directory. OELLM-CLI shared eval directory is bloated asf
     )
     evals_dir.mkdir(parents=True, exist_ok=True)
 
