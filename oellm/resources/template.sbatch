@@ -225,11 +225,8 @@ do
             echo
             echo "----------------------------------------------------"
             echo "lm_eval Execution"
-            RUN_ID=$(openssl rand -hex 5)
             EVAL_OUT_DIR="{evals_dir}"
-            EVAL_OUT_PAT="$RUN_ID*.json"
-            run_python -m lm_eval --model hf \
-                --model_args pretrained="$model_path",trust_remote_code=True \
+            EVAL_OUT_PAT="$RESULT_NAME*.json"
             run_python -m lm_eval --model "$MODEL_BACKEND" \
                 --model_args "pretrained=$model_path,trust_remote_code=True${{BACKEND_MODEL_ARGS:+,$$BACKEND_MODEL_ARGS}}" \
                 --tasks "$task_path" \
@@ -239,7 +236,7 @@ do
                 ${{LM_EVAL_INCLUDE_PATH:+--include_path $$LM_EVAL_INCLUDE_PATH}} \
                 --batch_size "$EVAL_BATCH_SIZE" \
                 ${{CACHE_REQUESTS:+--cache_requests $CACHE_REQUESTS}} \
-                ${{LIMIT:+--limit $LIMIT}} || EVAL_STATUS=1
+                ${{LIMIT:+--limit $LIMIT}}
             EVAL_STATUS=$?
             echo "----------------------------------------------------"
             ;;
@@ -388,4 +385,3 @@ if [ "$FAILED_EVALS" -gt 0 ]; then
 fi
 
 echo "Job $SLURM_ARRAY_TASK_ID finished."
-exit "$EVAL_STATUS"

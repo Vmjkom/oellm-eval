@@ -4,7 +4,6 @@ import math
 import os
 import re
 import shlex
-import shlex
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -157,7 +156,7 @@ def schedule_evals(
     *,
     judgearena_kwargs: dict[str, object] | None = None,
     max_array_len: int = 128,
-    tasks_per_job: int = 8,
+    tasks_per_job: int | None = None,
     limit: int | None = None,
     verbose: bool = False,
     download_only: bool = False,
@@ -210,7 +209,7 @@ def schedule_evals(
             `lm_eval` invocation. Tasks that share a model and shot count are evaluated
             together so the model is loaded once instead of once per task. `lm_eval`
             fails the whole invocation if one task raises, so this caps how many tasks
-            a single failure takes down; 1 restores one invocation per task.
+            a single failure takes down. Defaults to 8 for HF and 1 for vLLM.
         limit: If set, limit the number of samples per task (useful for quick testing).
             Passes --limit to lm_eval, --max_samples to lighteval, and
             --generation.n_instructions to JudgeArena.
@@ -247,6 +246,8 @@ def schedule_evals(
 
     if model_backend not in {"hf", "vllm"}:
         raise ValueError("model_backend must be hf or vllm")
+    if tasks_per_job is None:
+        tasks_per_job = 1 if model_backend == "vllm" else 8
     if tensor_parallel_size < 1:
         raise ValueError("tensor_parallel_size must be positive")
     if model_backend != "vllm" and tensor_parallel_size != 1:
@@ -617,7 +618,7 @@ def schedule_evals(
     sbatch_script = sbatch_template.format(
         csv_path=csv_path,
         max_array_len=max_array_len,
-        tasks_per_job=max(1, tasks_per_job),
+        tasks_per_job=tasks_per_job,
         array_limit=actual_array_size - 1,  # Array is 0-indexed
         num_jobs=actual_array_size,  # This is the number of array jobs, not total evals
         total_evals=len(df),  # Pass the total number of evaluations

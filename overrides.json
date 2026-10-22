@@ -1,7 +1,7 @@
 {
-    "EVAL_CONTAINER_IMAGE": "/flash/project_462001516/users/villekom/singularity/sandboxes/oellm_eval_lumi_test.sif",
+    "EVAL_CONTAINER_IMAGE": "/scratch/project_462001516/users/villekom/oellm-eval/oellm_eval_2026-21-08.sif",
     "EVAL_OUTPUT_DIR": "/flash/project_46200156/users/villekom/eval_output/",
     "PARTITION": "dev-g",
     "ACCOUNT": "project_462001516",
-    "SLURM_MEM": "480G"
+    "SLURM_MEM": "60G"
 }
