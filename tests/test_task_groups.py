@@ -1,8 +1,28 @@
 from oellm.task_groups import (
+    TaskGroup,
+    _build_task_suite_map,
     _expand_lang_templates,
     _expand_task_groups,
     _load_task_groups_data,
 )
+
+
+def test_group_subset_default_and_task_override():
+    group = TaskGroup.from_dict(
+        "example",
+        {
+            "description": "Subset inheritance",
+            "suite": "lm-eval-harness",
+            "n_shots": [0],
+            "dataset": "example/dataset",
+            "subset": "english",
+            "tasks": [
+                {"task": "inherited"},
+                {"task": "overridden", "subset": "french"},
+            ],
+        },
+    )
+    assert [task.subset for task in group.tasks] == ["english", "french"]
 
 
 class TestExpandLangTemplates:
@@ -163,11 +183,63 @@ class TestExpandTaskGroupsWithTemplates:
     def test_flores_eu_to_eng_expands_to_35_tasks(self):
         results = _expand_task_groups(["flores-200-eu-to-eng"])
         assert len(results) == 35
+        assert {result.n_shot for result in results} == {4}
 
-    def test_global_mmlu_expands_to_18_tasks(self):
+    def test_flores_eng_to_eu_uses_four_shots(self):
+        results = _expand_task_groups(["flores-200-eng-to-eu"])
+
+        assert len(results) == 35
+        assert {result.n_shot for result in results} == {4}
+
+    def test_global_mmlu_expands_to_16_tasks(self):
+        """16, not 18: Russian and Hebrew are not OpenEuroLLM target languages."""
         results = _expand_task_groups(["global-mmlu-eu"])
-        assert len(results) == 18
+        assert len(results) == 16
+        task_names = {r.task for r in results}
+        assert "global_mmlu_full_ru" not in task_names
+        assert "global_mmlu_full_he" not in task_names
 
     def test_global_piqa_completions_expands_to_32_tasks(self):
         results = _expand_task_groups(["global-piqa-eu-completions"])
         assert len(results) == 32
+
+
+def test_judgearena_does_not_register_standalone_ja_variants():
+    assert {"alpaca-eval-ja", "arena-hard-v0.1-ja", "arena-hard-v2.0-ja"}.isdisjoint(
+        _build_task_suite_map()
+    )
+
+
+def test_judgearena_elo_categories():
+    en = {result.task for result in _expand_task_groups(["elo-en"])}
+    eu = {result.task for result in _expand_task_groups(["elo-eu"])}
+    multilingual = {result.task for result in _expand_task_groups(["elo-multilingual"])}
+
+    assert en == {
+        "elo-comparia-en",
+        "elo-lmarena-en",
+        "elo-lmarena-100k-en",
+        "elo-lmarena-140k-en",
+    }
+    assert en <= eu <= multilingual
+    assert len(eu) == 32
+    assert len(multilingual) == 53
+    assert {result.task for result in _expand_task_groups(["elo-eu[deu_Latn]"])} == {
+        "elo-lmarena-de",
+        "elo-lmarena-100k-de",
+        "elo-lmarena-140k-de",
+    }
+    assert {
+        (result.suite, result.n_shot) for result in _expand_task_groups(["elo-eu"])
+    } == {("judgearena", 0)}
+
+
+def test_judgearena_additional_routes_only_three_tasks():
+    assert {
+        (result.task, result.suite, result.n_shot)
+        for result in _expand_task_groups(["judgearena-additional"])
+    } == {
+        ("mt-bench-101", "judgearena", 0),
+        ("m-arena-hard-v0.1-EU", "judgearena", 0),
+        ("m-arena-hard-v2.0-EU", "judgearena", 0),
+    }
